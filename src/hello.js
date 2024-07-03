@@ -1,16 +1,11 @@
 /*
  * @Date: 2024-07-02 21:20:54
- * @LastEditors: mason
- * @LastEditTime: 2024-07-02 22:24:42
+ * @LastEditors: MASON-SEA yangyangmason@outlook.com
+ * @LastEditTime: 2024-07-03 11:26:06
  * @FilePath: \3D=ICONS\src\hello.js
  */
 import { LitElement, css, html } from 'lit'
 import * as THREE from 'three';
-import { color, fog, float, positionWorld, triNoise3D, positionView, normalWorld, uniform, MeshPhongNodeMaterial } from 'three/examples/jsm/nodes/Nodes.js';
-import WebGPU from 'three/examples/jsm/capabilities/WebGPU.js';
-import WebGL from 'three/examples/jsm/capabilities/WebGL.js';
-import WebGPURenderer from 'three/examples/jsm/renderers/webgpu/WebGPURenderer.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 /**
  * An example element.
@@ -51,153 +46,181 @@ export class MyElement extends LitElement {
     firstUpdated() {
         console.log(this.shadowRoot);
         console.log(this);
+        this.draw();
     }
 
     draw() {
+        let container = this.shadowRoot;
 
         let camera, scene, renderer;
-        let controls;
+
+        let windowHalfX = container.innerWidth / 2;
+        let windowHalfY = container.innerHeight / 2;
+        let shadowMesh;
+        let { width, height } = this.getBoundingClientRect();
 
         init();
 
         function init() {
 
-            if (WebGPU.isAvailable() === false && WebGL.isWebGL2Available() === false) {
-
-                document.body.appendChild(WebGPU.getErrorMessage());
-
-                throw new Error('No WebGPU or WebGL2 support');
-
-            }
-
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 600);
-            camera.position.set(30, 15, 30);
+            camera = new THREE.PerspectiveCamera(60, width / height, 1, 10000);
+            camera.position.z = 1800;
 
             scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xffffff);
 
-            // custom fog
+            const light = new THREE.DirectionalLight(0xffffff, 3);
+            light.position.set(0, 0, 1);
+            scene.add(light);
 
-            const skyColor = color(0xf0f5f5);
-            const groundColor = color(0xd0dee7);
+            // shadow
 
-            const fogNoiseDistance = positionView.z.negate().smoothstep(0, camera.far - 300);
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
 
-            const distance = fogNoiseDistance.mul(20).max(4);
-            const alpha = .98;
-            const groundFogArea = float(distance).sub(positionWorld.y).div(distance).pow(3).saturate().mul(alpha);
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width / 2);
+            gradient.addColorStop(0.1, 'rgba(210,210,210,1)');
+            gradient.addColorStop(1, 'rgba(255,255,255,1)');
 
-            // a alternative way to create a TimerNode
-            const timer = uniform(0).onFrameUpdate((frame) => frame.time);
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, canvas.width, canvas.height);
 
-            const fogNoiseA = triNoise3D(positionWorld.mul(.005), 0.2, timer);
-            const fogNoiseB = triNoise3D(positionWorld.mul(.01), 0.2, timer.mul(1.2));
+            const shadowTexture = new THREE.CanvasTexture(canvas);
 
-            const fogNoise = fogNoiseA.add(fogNoiseB).mul(groundColor);
+            const shadowMaterial = new THREE.MeshBasicMaterial({ map: shadowTexture });
+            const shadowGeo = new THREE.PlaneGeometry(300, 300, 1, 1);
 
-            // apply custom fog
 
-            scene.fogNode = fog(fogNoiseDistance.oneMinus().mix(groundColor, fogNoise), groundFogArea);
-            scene.backgroundNode = normalWorld.y.max(0).mix(groundColor, skyColor);
+            shadowMesh = new THREE.Mesh(shadowGeo, shadowMaterial);
+            shadowMesh.position.y = - 250;
+            shadowMesh.rotation.x = - Math.PI / 2;
+            scene.add(shadowMesh);
 
-            // builds
+            shadowMesh = new THREE.Mesh(shadowGeo, shadowMaterial);
+            shadowMesh.position.y = - 250;
+            shadowMesh.position.x = - 400;
+            shadowMesh.rotation.x = - Math.PI / 2;
+            scene.add(shadowMesh);
 
-            const buildWindows = positionWorld.y.mul(10).floor().mod(4).sign().mix(color(0x000066).add(fogNoiseDistance), color(0xffffff));
+            shadowMesh = new THREE.Mesh(shadowGeo, shadowMaterial);
+            shadowMesh.position.y = - 250;
+            shadowMesh.position.x = 400;
+            shadowMesh.rotation.x = - Math.PI / 2;
+            scene.add(shadowMesh);
 
-            const buildGeometry = new THREE.BoxGeometry(1, 1, 1);
-            const buildMaterial = new MeshPhongNodeMaterial({
-                colorNode: buildWindows
-            });
+            const radius = 200;
 
-            const buildMesh = new THREE.InstancedMesh(buildGeometry, buildMaterial, 4000);
-            scene.add(buildMesh);
+            const geometry1 = new THREE.IcosahedronGeometry(radius, 1);
 
-            const dummy = new THREE.Object3D();
-            const center = new THREE.Vector3();
+            const count = geometry1.attributes.position.count;
+            geometry1.setAttribute('color', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
 
-            for (let i = 0; i < buildMesh.count; i++) {
+            const geometry2 = geometry1.clone();
+            const geometry3 = geometry1.clone();
 
-                const scaleY = Math.random() * 7 + .5;
+            const color = new THREE.Color();
+            const positions1 = geometry1.attributes.position;
+            const positions2 = geometry2.attributes.position;
+            const positions3 = geometry3.attributes.position;
+            const colors1 = geometry1.attributes.color;
+            const colors2 = geometry2.attributes.color;
+            const colors3 = geometry3.attributes.color;
 
-                dummy.position.x = Math.random() * 600 - 300;
-                dummy.position.z = Math.random() * 600 - 300;
+            for (let i = 0; i < count; i++) {
 
-                const distance = Math.max(dummy.position.distanceTo(center) * .012, 1);
+                color.setHSL((positions1.getY(i) / radius + 1) / 2, 1.0, 0.5, THREE.SRGBColorSpace);
+                colors1.setXYZ(i, color.r, color.g, color.b);
 
-                dummy.position.y = .5 * scaleY * distance;
+                color.setHSL(0, (positions2.getY(i) / radius + 1) / 2, 0.5, THREE.SRGBColorSpace);
+                colors2.setXYZ(i, color.r, color.g, color.b);
 
-                dummy.scale.x = dummy.scale.z = Math.random() * 3 + .5;
-                dummy.scale.y = scaleY * distance;
-
-                dummy.updateMatrix();
-
-                buildMesh.setMatrixAt(i, dummy.matrix);
+                color.setRGB(1, 0.8 - (positions3.getY(i) / radius + 1) / 2, 0, THREE.SRGBColorSpace);
+                colors3.setXYZ(i, color.r, color.g, color.b);
 
             }
 
-            // lights
-
-            scene.add(new THREE.HemisphereLight(skyColor.value, groundColor.value, 0.5));
-
-            // geometry
-
-            const planeGeometry = new THREE.PlaneGeometry(200, 200);
-            const planeMaterial = new THREE.MeshPhongMaterial({
-                color: 0x999999
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xffffff,
+                flatShading: true,
+                vertexColors: true,
+                shininess: 0
             });
 
-            const ground = new THREE.Mesh(planeGeometry, planeMaterial);
-            ground.rotation.x = - Math.PI / 2;
-            ground.scale.multiplyScalar(3);
-            ground.castShadow = true;
-            ground.receiveShadow = true;
-            scene.add(ground);
+            const wireframeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent: true });
 
-            // renderer
+            let mesh = new THREE.Mesh(geometry1, material);
+            let wireframe = new THREE.Mesh(geometry1, wireframeMaterial);
+            mesh.add(wireframe);
+            mesh.position.x = - 400;
+            mesh.rotation.x = - 1.87;
+            scene.add(mesh);
 
-            renderer = new WebGPURenderer({ antialias: true });
+            mesh = new THREE.Mesh(geometry2, material);
+            wireframe = new THREE.Mesh(geometry2, wireframeMaterial);
+            mesh.add(wireframe);
+            mesh.position.x = 400;
+            scene.add(mesh);
+
+            mesh = new THREE.Mesh(geometry3, material);
+            wireframe = new THREE.Mesh(geometry3, wireframeMaterial);
+            mesh.add(wireframe);
+            scene.add(mesh);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setSize(width, height);
             renderer.setAnimationLoop(animate);
-            document.body.appendChild(renderer.domElement);
+            container.appendChild(renderer.domElement);
 
-            // controls
-
-            controls = new OrbitControls(camera, renderer.domElement);
-            controls.target.set(0, 2, 0);
-            controls.minDistance = 7;
-            controls.maxDistance = 100;
-            controls.maxPolarAngle = Math.PI / 2;
-            controls.autoRotate = true;
-            controls.autoRotateSpeed = .1;
-            controls.update();
-
-            window.addEventListener('resize', resize);
+            container.addEventListener('resize', onWindowResize);
 
         }
 
-        function resize() {
+        function onWindowResize() {
 
-            camera.aspect = window.innerWidth / window.innerHeight;
+            let { width, height } = this.getBoundingClientRect();
+
+            windowHalfX = width / 2;
+            windowHalfY = height / 2;
+
+            camera.aspect = width / height;
             camera.updateProjectionMatrix();
 
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setSize(width, height);
 
         }
 
         function animate() {
-
-            controls.update();
-
-            renderer.render(scene, camera);
-
+            render();
         }
+
+        // 相机围绕球体旋转的半径  
+        const radius = 1000;
+        // 相机围绕球体旋转的当前角度（弧度）  
+        let angle = 0;
+
+        function render() {
+            // requestAnimationFrame(render);
+            angle += 0.01; // 控制旋转速度  
+            camera.position.x = Math.cos(angle) * radius; // X坐标根据角度变化  
+            camera.position.y = Math.sin(angle) * radius; // Y坐标也根据角度变化  
+            camera.position.z = 5; // Z坐标保持不变，因为我们是在Z轴方向上“围绕”  
+          
+            // 让相机看向原点  
+            camera.lookAt(0, 0, 0);  
+
+            // 渲染场景  
+            renderer.render(scene, camera);
+        }
+
     }
 
     static get styles() {
         return css`
       :host{
-        width: 100%;
-        height: 100%;
+        display: block;
       }
     `
     }
